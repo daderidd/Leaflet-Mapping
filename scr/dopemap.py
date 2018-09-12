@@ -1,3 +1,13 @@
+# import pysal as ps
+from pylab import *
+# from pysal.esda.getisord import G_Local
+import folium
+from folium.plugins import HeatMap
+from folium.plugins import MarkerCluster
+import branca.colormap as cm
+from folium import FeatureGroup
+
+
 def createMap(df,x,y,zoom,max_zoom):
     map = folium.Map([mean(df[y]),mean(df[x])],zoom_start = zoom,max_zoom = max_zoom)
     return map
@@ -37,7 +47,7 @@ def createPopupText (col_names):
     return popup_text
 def createMarkers(map,df,x,y,markers_name,comment_cols,comment_names,color_var,radius,colors,popup =True):
     feature_group = FeatureGroup(name=markers_name)
-    marker_cluster = MarkerCluster(name = 'test').add_to(map)
+    marker_cluster = MarkerCluster(name = 'Point clusters').add_to(map)
     for i in comment_cols:
         if df[i].dtype == object:
             df[i] = df[i].str.replace("'","&#39;")
