@@ -1,11 +1,13 @@
 import pandas as pd
 import geopandas as gpd
+from geopandas import GeoDataFrame
 # import pysal as ps
 # from pysal.contrib.viz import mapping as maps
 # from pysal.esda.getisord import G_Local
 import folium
 from folium.plugins import Fullscreen
 from pathlib import Path
+from shapely.geometry import Point, Polygon
 from scr import dopemap
 import shapefile
 from json import dumps
@@ -14,25 +16,24 @@ data_folder = Path("../../Projets/GeoCardio/Data/").resolve()
 shp_folder = Path("../../Projets/GeoCardio/Shape_files/").resolve()
 output_folder = Path("../../Projets/GeoCardio/Maps/").resolve()
 
-mapping_data = data_folder / "geocardio_swiss_coord.csv"
-df = pd.read_csv(mapping_data)
+datatomap = data_folder / "geocardio_swiss_coord.csv"
+df = pd.read_csv(datatomap)
 df = df[df.columns[1:]]
-
-# geometry = [Point(xy) for xy in zip(df.E, df.N)]
-# crs = {'init': 'epsg:2056'}
-# gdf = GeoDataFrame(df, crs=crs, geometry=geometry)
 df = df.loc[df['E'].isnull()==False]
 
 df.loc[df['rcp_avant_amb'] == 1, 'rcp_avant_amb'] = 'Réanimation par témoin'
 df.loc[df['rcp_avant_amb'] == 99, 'rcp_avant_amb'] = 'Donnée manquante'
 
 #
-shp_choro1 = shp_folder / "Vaud_communes4326.shp"
+geometry = [Point(xy) for xy in zip(df.lon, df.lat)]
+crs = {'init': 'epsg:4326'}
+gdf = GeoDataFrame(df, crs=crs, geometry=geometry)
+
+shp_choro1 = shp_folder / "Vaud_communes.shp"
 shp_choro1 = str(shp_choro1)
 choro1 = gpd.read_file(shp_choro1)
 choro1 = choro1.to_crs({'init': 'epsg:4326'})
-
-
+choro1 = choro1.merge(gdf, left_on = 'NAME',right_on='localite', how = 'right')
 # read the shapefile
 reader = shapefile.Reader('../../Projets/GeoCardio/Shape_files/Vaud_communes4326.shp')
 fields = reader.fields[1:]
@@ -51,13 +52,15 @@ geojson.write(dumps({"type": "FeatureCollection",\
 geojson.close()
 
 
-map_geocardio = str(shp_folder / 'Vaud_communes_GeoCardio.shp')
-vd_geocardio = gpd.read_file(map_geocardio)
-vd_geocardio = vd_geocardio.to_crs({'init': 'epsg:4326'})
+# map_geocardio = str(shp_folder / 'Vaud_communes_GeoCardio.shp')
+# vd_geocardio = gpd.read_file(map_geocardio)
+# vd_geocardio = vd_geocardio.to_crs({'init': 'epsg:4326'})
 
 superficie_vaud = pd.read_csv(data_folder/'Superficie_2013-2018-communes.csv')
 
-geo_data = vd_geocardio.groupby(['UUID','NAME','BFS_NUMMER']).size().reset_index(name='Number_geocardio_counts')
+geo_data = choro1.groupby(['NAME','BFS_NUMMER']).size().reset_index(name='Number_geocardio_counts')
+geo_data = geo_data.loc[geo_data['Number_geocardio_counts'] != 0]
+
 superficie_vaud = superficie_vaud.rename(columns={'Numero': 'BFS_NUMMER'})
 superficie_vaud['BFS_NUMMER'] = superficie_vaud['BFS_NUMMER'].astype(int)
 geo_data = geo_data.merge(superficie_vaud,on = 'BFS_NUMMER',how = 'left')
@@ -65,7 +68,8 @@ geo_data = geo_data.rename(columns={'Surfacedupolygone': 'PolygonSurface'})
 
 geo_data['PolygonSurface'] = geo_data['PolygonSurface'].astype(float)
 geo_data['Rate_bussante_perha'] = geo_data['Number_geocardio_counts']/geo_data['PolygonSurface']
-geo_data = geo_data.groupby(['BFS_NUMMER','Rate_bussante_perha']).size().reset_index(name='NValues')
+geo_data.to_csv('test.csv')
+################
 city_geo_path = str(data_folder/'vaud_communes4326.json')
 city_geo = gpd.read_file(city_geo_path)
 ################
