@@ -6,8 +6,8 @@ from folium.plugins import HeatMap
 from folium.plugins import MarkerCluster
 import branca.colormap as cm
 from folium import FeatureGroup
-
-
+import pandas as pd
+import seaborn as sns
 def createMap(df,x,y,zoom,max_zoom):
     map = folium.Map([mean(df[y]),mean(df[x])],zoom_start = zoom,max_zoom = max_zoom)
     return map
@@ -15,16 +15,34 @@ def addTiles(map,tiles,max_zoom):
     for tile in tiles:
         folium.TileLayer(tile,max_zoom = max_zoom).add_to(map)
     return map
-def createChoroplethMap(map,geo_data,csv_data,mapname,data_col,join_col,legend_name):
-    map.choropleth(
-    geo_data=geo_data,
-    data=csv_data,
-    name = mapname,
-    columns= data_col,
-    key_on=join_col,
-    fill_opacity = 0.8,
-    fill_color='BuGn',
-    legend_name=legend_name)
+def createChoroplethMap(map,gdf,mapname,data_col,join_col,legend_name):
+    gdf['geometry'] = gdf['geometry'].simplify(0.001, preserve_topology=True)
+    quantiles = 20
+    gdf['NAME_y'] = gdf['NAME_y'].str.replace("'","&#39;")
+    gdf['quantile'] = pd.qcut(gdf['Rate_bussante_perha'], quantiles, labels=False)
+    colors = sns.color_palette("coolwarm", quantiles).as_hex()
+    colors = colors[::-1]
+    gdf['style'] = gdf['quantile'].apply(
+    lambda l: {
+        'fillColor': colors[quantiles-1-int(l)], 
+        'fillOpacity': 0.7, 
+        'weight': 2, 
+        'color': 'black'})
+    for i in range(len(gdf)):
+        gs = folium.GeoJson(gdf.iloc[i:i+1],name = gdf['NAME_y'][i],control=False)
+        label = '{}: {} cases per ha'.format(
+            gdf['NAME_y'][i], round(gdf['Rate_bussante_perha'][i], 4))
+        folium.Popup(label).add_to(gs)
+        gs.add_to(map)
+    # map.choropleth(
+    #     geo_data=geo_data,
+    #     data=csv_data,
+    #     name = mapname,
+    #     columns= data_col,
+    #     key_on=join_col,
+    #     fill_opacity = 0.8,
+    #     fill_color='BuGn',
+    #     legend_name=legend_name)
 def createLegend(map,data,colors):
     legend_html = '''<div style="position: fixed; 
                         bottom: 50px; left: 50px; width: 400px; height: 200px;
@@ -45,16 +63,15 @@ def createPopupText (col_names):
         format_name = name + ': ' + '{} ' + '<br> '
         popup_text += format_name
     return popup_text
-def createMarkers(map,df,x,y,markers_name,comment_cols,comment_names,color_var,radius,colors,popup =True):
+def createMarkers(map,df,x,y,markers_name,comment_cols,comment_names,color_var,radius,colors,popup =True,indivMarkers = True):
     feature_group = FeatureGroup(name=markers_name)
     marker_cluster = MarkerCluster(name = 'Point clusters').add_to(map)
     for i in comment_cols:
         if df[i].dtype == object:
             df[i] = df[i].str.replace("'","&#39;")
-            df[i] = df[i].str.replace("'","&#339;")
-    for index, row in df[0:5000].iterrows():
+    for index, row in df.iterrows():
         if index % 1000 == 0:
-            print(index,' Markers added to the map !')
+            print(index,' markers added to the map!')
         x1,y1 = row[x],row[y]
 #         x1_r,y1_r = "{0:.2f}".format(x1),"{0:.2f}".format(y1)
         popup_text = createPopupText(comment_names)
@@ -70,7 +87,8 @@ def createMarkers(map,df,x,y,markers_name,comment_cols,comment_names,color_var,r
             marker = folium.Circle(location = ([y1,x1]), fill=True,fill_opacity = 1,fill_color = color, color = color,radius = radius)
             folium.Circle(location = ([y1,x1]), fill=True,fill_opacity = 1,fill_color = color, color = color,radius = radius).add_to(marker_cluster)
         feature_group.add_child(marker)
-    map.add_child(feature_group)
+    if indivMarkers == True:
+        map.add_child(feature_group)
 def createHeatmap(map,data,x,y):
     # Add heatmap Legend
     cm1 = cm.LinearColormap(['b','c','lime','y','r'], vmin=0, vmax=1, caption='Heatmap Legend')
